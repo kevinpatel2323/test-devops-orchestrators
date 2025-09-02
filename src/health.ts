@@ -30,7 +30,11 @@ export async function initializeReadiness() {
     readinessDetails.filesystem = fs.existsSync(logsDir);
     
     // Check Ethereum connection
-    if (process.env.INFURA_URL) {
+    if (process.env.TEST_MODE === 'true') {
+      // In test mode, skip Ethereum connection check
+      readinessDetails.ethereum = true;
+      readinessDetails.errorMessage = "Test mode - Ethereum connection skipped";
+    } else if (process.env.INFURA_URL) {
       const provider = new ethers.JsonRpcProvider(process.env.INFURA_URL);
       try {
         const blockNumber = await provider.getBlockNumber();
@@ -44,10 +48,14 @@ export async function initializeReadiness() {
       readinessDetails.errorMessage = "INFURA_URL not configured";
     }
     
-    // Set overall readiness
-    isReady = readinessDetails.environment && 
-              readinessDetails.filesystem && 
-              readinessDetails.ethereum;
+    // Set overall readiness - in test mode, only require environment and filesystem
+    if (process.env.TEST_MODE === 'true') {
+      isReady = readinessDetails.environment && readinessDetails.filesystem;
+    } else {
+      isReady = readinessDetails.environment && 
+                readinessDetails.filesystem && 
+                readinessDetails.ethereum;
+    }
     
     return isReady;
   } catch (error) {

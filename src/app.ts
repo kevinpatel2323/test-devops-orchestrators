@@ -51,11 +51,22 @@ async function main() {
 
     internalLogger();
 
-    const blockNumber = await provider.getBlockNumber();
-    console.log(`Connected to Ethereum. Latest block: ${blockNumber}`);
+    // Check if we're in test mode
+    if (process.env.TEST_MODE === 'true') {
+        console.log("[TEST_MODE] Running in test mode - skipping Ethereum connection");
+        console.log("[TEST_MODE] Application will start without blockchain connectivity");
+    } else {
+        try {
+            const blockNumber = await provider.getBlockNumber();
+            console.log(`Connected to Ethereum. Latest block: ${blockNumber}`);
 
-    await logAllPaths(provider);
-    setInterval(() => logAllPaths(provider), 60 * 1000);
+            await logAllPaths(provider);
+            setInterval(() => logAllPaths(provider), 60 * 1000);
+        } catch (error) {
+            console.error("[ERROR] Failed to connect to Ethereum:", error);
+            console.log("[INFO] Application will continue without blockchain connectivity");
+        }
+    }
 }
 
 app.listen(port, () => {

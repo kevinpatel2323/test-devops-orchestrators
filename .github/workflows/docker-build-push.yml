@@ -223,11 +223,13 @@ jobs:
       # Step 4: Create .env file for testing
       - name: Create test environment
         run: |
-          echo "INFURA_URL=https://mainnet.infura.io/v3/test_key" > .env
+          # Use a valid Infura URL format but with test key for testing
+          echo "INFURA_URL=https://mainnet.infura.io/v3/00000000000000000000000000000000" > .env
           echo "NODE_ENV=production" >> .env
           echo "PORT=3000" >> .env
           echo "LOG_DIR=/app/logs" >> .env
           echo "RUN_DIR=/app/run" >> .env
+          echo "TEST_MODE=true" >> .env
 
       # Step 5: Run container with start.sh script and test health
       - name: Run container
@@ -265,6 +267,12 @@ jobs:
           
           echo "=== Check if start-container.sh is the main process ==="
           docker exec test-container cat /proc/1/cmdline 2>/dev/null | tr '\0' ' ' || echo "Cannot read main process cmdline"
+          
+          echo "=== Check process tree ==="
+          docker exec test-container ps -ef --forest || echo "ps -ef --forest failed"
+          
+          echo "=== Check if dumb-init is working ==="
+          docker exec test-container ps -ef | grep dumb-init || echo "dumb-init not found in process list"
           
           echo "=== Check start.sh permissions ==="
           docker exec test-container ls -la /app/start.sh || echo "start.sh not found"
