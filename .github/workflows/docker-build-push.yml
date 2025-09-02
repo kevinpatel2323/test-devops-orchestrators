@@ -226,8 +226,10 @@ jobs:
           echo "INFURA_URL=https://mainnet.infura.io/v3/test_key" > .env
           echo "NODE_ENV=production" >> .env
           echo "PORT=3000" >> .env
+          echo "LOG_DIR=/app/logs" >> .env
+          echo "RUN_DIR=/app/run" >> .env
 
-      # Step 5: Run container and test health
+      # Step 5: Run container with start.sh script and test health
       - name: Run container
         run: |
           docker run -d \
@@ -235,19 +237,94 @@ jobs:
             -p 3000:3000 \
             -v $(pwd)/.env:/app/.env:ro \
             test-image:latest
+          
+          echo "Container started, waiting a moment for initialization..."
+          sleep 5
 
-      # Step 6: Wait for container to be ready
-      - name: Wait for container
+      # Step 6: Check container logs immediately after startup
+      - name: Check container logs immediately
+        run: |
+          echo "=== Container logs immediately after startup ==="
+          sleep 3
+          docker logs test-container || echo "No logs yet"
+          
+          echo "=== Container status ==="
+          docker ps -a
+          
+          echo "=== Container inspect ==="
+          docker inspect test-container | jq '.[0].State' || echo "Container inspect failed"
+          
+          echo "=== Check if start.sh is running ==="
+          docker exec test-container ps aux | grep -E "(start.sh|start-container.sh|node)" || echo "No start scripts or node processes found"
+          
+          echo "=== Check container entrypoint and command ==="
+          docker inspect test-container | jq '.[0].Config.Entrypoint, .[0].Config.Cmd' || echo "Cannot inspect container config"
+          
+          echo "=== Check what's actually running in the container ==="
+          docker exec test-container ps -ef || echo "ps -ef failed"
+          
+          echo "=== Check if start-container.sh is the main process ==="
+          docker exec test-container cat /proc/1/cmdline 2>/dev/null | tr '\0' ' ' || echo "Cannot read main process cmdline"
+          
+          echo "=== Check start.sh permissions ==="
+          docker exec test-container ls -la /app/start.sh || echo "start.sh not found"
+          
+          echo "=== Check start.sh content ==="
+          docker exec test-container head -20 /app/start.sh || echo "Cannot read start.sh"
+          
+          echo "=== Check start-container.sh content ==="
+          docker exec test-container head -20 /app/start-container.sh || echo "Cannot read start-container.sh"
+          
+          echo "=== Check environment variables ==="
+          docker exec test-container env | grep -E "(NODE_ENV|INFURA_URL|LOG_DIR|RUN_DIR)" || echo "No relevant env vars found"
+
+      # Step 7: Wait for container to be ready with early log checking
+      - name: Wait for container with early diagnostics
         run: |
           echo "Waiting for container to be ready..."
+          
+          # Start a background process to monitor logs in real-time
+          docker logs -f test-container &
+          LOG_MONITOR_PID=$!
+          
           for i in {1..30}; do
+            echo "=== Attempt $i/30 ==="
+            
+            # Check container status
+            if ! docker ps | grep -q test-container; then
+              echo "Container is not running! Checking logs..."
+              docker logs test-container || echo "Failed to get logs"
+              docker ps -a
+              exit 1
+            fi
+            
+            # Check if health endpoint is responding
             if docker exec test-container curl -sf http://localhost:3000/healthz > /dev/null 2>&1; then
               echo "Container is ready!"
               break
             fi
-            echo "Attempt $i/30: Container not ready yet..."
+            
+            echo "Container not ready yet... Checking logs..."
+            docker logs test-container --tail 10 || echo "Failed to get logs"
+            
+            if [ $i -eq 5 ] || [ $i -eq 15 ]; then
+              echo "=== Detailed diagnostics at attempt $i ==="
+              docker exec test-container ps aux || echo "ps failed"
+              docker exec test-container ls -la /app || echo "ls failed"
+              docker exec test-container cat /app/logs/*.log 2>/dev/null | tail -20 || echo "No log files"
+              
+              echo "=== Testing start.sh manually ==="
+              docker exec test-container bash -c "cd /app && ./start.sh --help 2>&1 || echo 'start.sh failed to run'" || echo "Manual start.sh test failed"
+              
+              echo "=== Testing start-container.sh manually ==="
+              docker exec test-container bash -c "cd /app && ./start-container.sh --help 2>&1 || echo 'start-container.sh failed to run'" || echo "Manual start-container.sh test failed"
+            fi
+            
             sleep 2
           done
+          
+          # Stop log monitoring
+          kill $LOG_MONITOR_PID 2>/dev/null || true
 
       # Step 7: Test health endpoints
       - name: Test endpoints

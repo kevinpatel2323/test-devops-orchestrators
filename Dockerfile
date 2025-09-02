@@ -61,15 +61,15 @@ COPY --from=dependencies /app/prod_node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 # Copy shell scripts with proper permissions
-COPY --chown=nodejs:nodejs install.sh setup.sh start.sh ./
-RUN chmod +x install.sh setup.sh start.sh
+COPY --chown=nodejs:nodejs install.sh setup.sh start.sh start-container.sh ./
+RUN chmod +x install.sh setup.sh start.sh start-container.sh
 
 # Create necessary directories
 RUN mkdir -p logs run && \
     chown -R nodejs:nodejs /app
 
-# Copy .env.example as template
-COPY --chown=nodejs:nodejs .env.example .env.example
+# Copy .env_example as template
+COPY --chown=nodejs:nodejs .env_example .env.example
 
 # Health check configuration
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
@@ -89,8 +89,8 @@ ENV NODE_ENV=production \
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 
-# Default command
-CMD ["node", "dist/app.js"]
+# Default command - use start-container.sh script for container-friendly startup
+CMD ["/app/start-container.sh"]
 
 # ============================================
 # Stage 4: Development (optional)
