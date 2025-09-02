@@ -1,12 +1,12 @@
-# Swap Optimizer – DevOps Candidate Challenge
+# LoyaltyX Orchestrator - DevOps Implementation
 
-Welcome! This project is a real-world simulation of a token swap optimizer using live Chainlink price feeds on Ethereum mainnet. It includes both a backend orchestrator and a lightweight API layer. Your role is to run, debug, and improve the system as a DevOps engineer.
+This project is a fully implemented and optimized token swap orchestrator for the LoyaltyX ecosystem. It connects to Ethereum via Infura, fetches token prices from Chainlink, calculates optimal swap paths, and provides a robust API layer.
 
 ---
 
 ## Project Overview
 
-This app continuously:
+This orchestrator continuously:
 - Connects to Ethereum via Infura
 - Fetches token prices from Chainlink
 - Calculates optimal token swap paths
@@ -16,86 +16,79 @@ This app continuously:
 A REST API (`api.js`) exposes:
 - `/api/routes`: Latest swap paths
 - `/api/routes/:from/:to`: Single pair lookup
-- `/healthz`: System heartbeat check based on logs
+- `/healthz`: System heartbeat check (liveness probe)
+- `/readyz`: Dependency readiness check (readiness probe)
 - `/metrics`: Prometheus-style metrics (uptime, memory, CPU)
 
 ---
 
-## Your Tasks
+## Completed Tasks
 
-### 1. Setup and Launch
+### 1. Improved Shell Scripts
 
-Run the app using the provided scripts:
+The installation and setup scripts have been enhanced with:
+- Pre-flight requirement checks (git installation, Node.js version verification)
+- Comprehensive logging with timestamps
+- Error handling and environment validation
+- PID lock mechanism to prevent double-starts
+- Proper exit codes for abnormal termination
+
+### 2. Containerization
+
+- Created a production-ready `Dockerfile` with multi-stage builds
+- Added `docker-compose.yml` for local orchestration
+- Implemented volume mounting for persistent logs
+- Configured environment variable injection
+
+### 3. CI/CD Automation
+
+Implemented GitHub Actions workflow that:
+- Triggers on every push to main branch
+- Builds a Docker image of the project
+- Tags the image with the commit SHA
+- Pushes the image to GitHub Container Registry
+- Performs security scanning with Trivy
+
+### 4. Enhanced Monitoring
+
+- Added `/healthz` (liveness probe) endpoint
+- Implemented `/readyz` (readiness probe) endpoint
+- Fixed the silent failure issue in heartbeat logging
+
+---
+
+## Usage
+
+### Local Development
 
 ```bash
-chmod +x setup.sh start.sh
-./setup.sh
-./start.sh
-```
-
-Ensure you configure `.env` from `.env_example` with your Infura Project ID.
-
-#### Development
-- Run in Dev Mode
-```bash
+# Install dependencies
 npm install
+
+# Run in development mode
 npm run dev
-```
-- Build and Run
-```bash
+
+# Build and run in production mode
 npm run build
 npm start
 ```
 
-### 2. Observe the Logs
-
-Monitor live status:
+### Docker Deployment
 
 ```bash
-tail -f logs/output.log
-tail -f logs/swap_routes.json
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Or use the Docker image directly
+docker pull ghcr.io/kevinpatel2323/veltrix-capital:latest
+docker run -p 4000:4000 -v ./logs:/app/logs -e INFURA_URL=your_infura_url ghcr.io/kevinpatel2323/veltrix-capital:latest
 ```
 
-Also visit:
+### One-Click Installation
 
-- http://localhost:4000/api/routes
-- http://localhost:4000/healthz
-- http://localhost:4000/metrics
-
-### 3. Debug: Silent Failure Simulation
-
-After 30 seconds, `output.log` will stop updating — without crashing the app. Your job:
-
-- Identify and fix the root cause of this silent failure
-- Make heartbeat logs reliable again
-
-### 4. Improve Shell Scripts
-
-Refactor and harden:
-
-- `setup.sh`: Validate environment, improve logging
-- `start.sh`: Add safety features, background tasks, or monitoring
-
-### 5. Containerize the Application
-
-- Create a `Dockerfile` to run `app.js` and `api.js`
-- Optional: Add `docker-compose.yml` for easier orchestration
-- Ensure logs persist and `.env` can be injected cleanly
-
-### 6. Create a GitHub Actions workflow that:
-
-- Triggers on push events on the main branch
-- Builds a Docker image of the project
-- Tags the image using the current Git commit SHA
-- (Optional) Pushes the image to a container registry (e.g., Docker Hub or GitHub Container Registry)
-
-### 7. Bonus (Optional)
-
-You may optionally:
-
-- Build a log monitoring watchdog (bash or node)
-- Add `logrotate` or timestamp-based log separation
-- Serve a `/status.html` page from the API with live stats
+```bash
+curl -sSL https://raw.githubusercontent.com/kevinpatel2323/veltrix-capital/main/install.sh | bash
+```
     
 ---
 
