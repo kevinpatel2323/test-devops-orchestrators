@@ -1,0 +1,168 @@
+version: '3.8'
+
+services:
+  # Production service
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: swap-optimizer:production
+    container_name: swap-optimizer-prod
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - INFURA_URL=${INFURA_URL:-https://mainnet.infura.io/v3/YOUR_PROJECT_ID}
+      - PORT=3000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      # Persist logs
+      - ./logs:/app/logs
+      # Persist run directory (PID files)
+      - ./run:/app/run
+      # Mount .env file if it exists
+      - ./.env:/app/.env:ro
+    networks:
+      - orchestrator-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Development service
+  orchestrator-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    image: swap-optimizer:development
+    container_name: swap-optimizer-dev
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - INFURA_URL=${INFURA_URL:-https://mainnet.infura.io/v3/YOUR_PROJECT_ID}
+      - PORT=3000
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - DEBUG=*
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./.env:/app/.env:ro
+      # Persist logs
+      - ./logs:/app/logs
+      # Persist node_modules to avoid reinstalling
+      - node_modules_dev:/app/node_modules
+    networks:
+      - orchestrator-network
+    stdin_open: true
+    tty: true
+    profiles:
+      - dev
+    command: npm run dev
+
+  # Monitoring service - Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: swap-optimizer-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - orchestrator-network
+    profiles:
+      - monitoring
+    depends_on:
+      - orchestrator
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: swap-optimizer-grafana
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - orchestrator-network
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+
+  # Log aggregation service (optional)
+  loki:
+    image: grafana/loki:latest
+    container_name: swap-optimizer-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - orchestrator-network
+    profiles:
+      - monitoring
+
+  # Promtail for log shipping (optional)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: swap-optimizer-promtail
+    volumes:
+      - ./logs:/var/log/orchestrator:ro
+      - ./monitoring/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - orchestrator-network
+    profiles:
+      - monitoring
+    depends_on:
+      - loki
+
+networks:
+  orchestrator-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  node_modules_dev:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local

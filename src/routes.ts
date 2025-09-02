@@ -1,6 +1,7 @@
 import { Router } from "express";
 import path from "path";
 import fs from "fs";
+import { livenessProbe, readinessProbe } from "./health";
 
 const router = Router();
 
@@ -8,39 +9,46 @@ router.get("/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date() });
 });
 
-
+/**
+ * Liveness probe endpoint - confirms the process is running
+ * Returns 200 OK if the application process is alive
+ * Used by orchestrators (Kubernetes, Docker) to determine if the container should be restarted
+ */
 router.get("/healthz", (req, res) => {
-  const logFile = path.join(__dirname, "../logs/output.log");
-
   try {
-    const logLines = fs.readFileSync(logFile, "utf-8").trim().split("\n");
-    const lastLine = logLines.reverse().find(line => line.includes("[heartbeat]"));
-
-    if (!lastLine) {
-      return res.status(503).json({ status: "fail", reason: "no heartbeat found" });
-    }
-
-    const match = lastLine.match(/\[heartbeat\] (.+)/);
-    if (!match) {
-      return res.status(503).json({ status: "fail", reason: "malformed heartbeat log" });
-    }
-
-    const lastTimestamp = new Date(match[1]);
-    const now = new Date();
-    const uptimeSeconds = Math.floor((now.getTime() - lastTimestamp.getTime()) / 1000);
-    const uptimeMinutes = Math.floor(uptimeSeconds / 60);
-
-    const isHealthy = uptimeSeconds < 10;
-
-    return res.status(isHealthy ? 200 : 503).json({
-      status: isHealthy ? "ok" : "fail",
-      last_heartbeat: lastTimestamp.toISOString(),
-      uptime_seconds: uptimeSeconds,
-      uptime_minutes: uptimeMinutes,
-      reason: isHealthy ? undefined : "heartbeat stale"
-    });
+    const health = livenessProbe();
+    
+    // Liveness probe should always return 200 if the process is running
+    res.status(200).json(health);
   } catch (err: any) {
-    return res.status(500).json({ status: "error", message: err.message });
+    // If we can't even execute the liveness probe, the app is in a bad state
+    res.status(503).json({
+      success: false,
+      status: "unhealthy",
+      error: err.message
+    });
+  }
+});
+
+/**
+ * Readiness probe endpoint - confirms dependencies are ready
+ * Returns 200 OK only when all dependencies (DB, APIs, configs) are available
+ * Used by orchestrators to determine if the container can receive traffic
+ */
+router.get("/readyz", async (req, res) => {
+  try {
+    const readiness = await readinessProbe();
+    
+    // Return 200 if ready, 503 if not ready
+    const statusCode = readiness.success ? 200 : 503;
+    res.status(statusCode).json(readiness);
+  } catch (err: any) {
+    // Error checking readiness
+    res.status(503).json({
+      success: false,
+      status: "not_ready",
+      error: err.message
+    });
   }
 });
 

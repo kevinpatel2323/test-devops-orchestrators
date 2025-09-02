@@ -6,6 +6,7 @@ import { formatDuration } from "./utils";
 import { logAllPaths } from "./graph";
 import router from "./routes";
 import apiRouter from "./api";
+import { initializeReadiness } from "./health";
 
 dotenv.config();
 
@@ -34,6 +35,15 @@ function internalLogger() {
 async function main() {
     let uptime = 0;
 
+    // Initialize health check readiness
+    console.log("[INIT] Initializing health check readiness...");
+    const isReady = await initializeReadiness();
+    if (isReady) {
+        console.log("[READY] All health checks passed - application is ready");
+    } else {
+        console.log("[WARNING] Some health checks failed - application may not be fully ready");
+    }
+
     setInterval(() => {
         uptime++;
         process.stdout.write(`\r[status] Server running... ${formatDuration(uptime)} uptime`);
@@ -48,5 +58,13 @@ async function main() {
     setInterval(() => logAllPaths(provider), 60 * 1000);
 }
 
-app.listen(port, () => console.log("Server listening on port 3000"));
-main();
+app.listen(port, () => {
+    console.log(`Server listening on port ${port}`);
+    console.log(`Health check (liveness): http://localhost:${port}/healthz`);
+    console.log(`Readiness check: http://localhost:${port}/readyz`);
+});
+
+main().catch(error => {
+    console.error("[ERROR] Failed to start application:", error);
+    process.exit(1);
+});

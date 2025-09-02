@@ -1,0 +1,29 @@
+# Local development overrides
+# This file is automatically loaded by docker-compose and overrides settings in docker-compose.yml
+# Perfect for local development without modifying the main compose file
+
+version: '3.8'
+
+services:
+  orchestrator:
+    # Override for local development
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+      cache_from:
+        - node:18-alpine
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - DEBUG=*
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src:delegated
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      # Use delegated for better performance on Mac
+      - ./logs:/app/logs:delegated
+    command: npm run dev
+    stdin_open: true
+    tty: true
